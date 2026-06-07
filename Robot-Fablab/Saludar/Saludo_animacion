@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Personaje ASCII saludando - Windows Terminal
+Archivos requeridos en la misma carpeta:
+  Saludo_1.txt  Saludo_2.txt  Saludo_3.txt  Saludo_4.txt  Saludo_5.txt
+
+Frames:
+  0 = Saludo_1.txt — neutral, brazo abajo
+  1 = Saludo_2.txt — brazo subiendo 45°
+  2 = Saludo_3.txt — brazo en alto 90°
+  3 = Saludo_4.txt — mano abierta (peak del saludo) ← se mantiene aquí
+  4 = Saludo_5.txt — brazo bajando 45°
+
+Ejecutar:  python saludo_animacion.py
+Salir:     Ctrl+C
+"""
+import os, sys, time, shutil, signal, ctypes, random
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+FRAME_FILES = [
+    ('Animation_1.txt', '@'),
+    ('Animation2.txt', '@'),
+    ('Animation3.txt', '@'),
+    ('Animation4.txt', '@'),
+    ('Animation5.txt', '@'),
+]
+
+def load_frame(filename, char):
+    path = os.path.join(HERE, filename)
+    if not os.path.exists(path):
+        print(f"ERROR: No se encontro '{filename}' en {HERE}")
+        sys.exit(1)
+    with open(path, encoding='utf-8', errors='replace') as f:
+        lines = f.readlines()
+    lines = [l.rstrip('\n') for l in lines]
+    content_rows = [i for i, l in enumerate(lines) if l.strip()]
+    if not content_rows:
+        return [], 0, 0, char
+    min_r, max_r = content_rows[0], content_rows[-1]
+    cropped = lines[min_r:max_r + 1]
+    content_lines = [l for l in cropped if l.strip()]
+    min_c = min(len(l) - len(l.lstrip()) for l in content_lines)
+    max_c = max(len(l.rstrip()) for l in content_lines)
+    W, H = max_c - min_c, len(cropped)
+    grid = []
+    for l in cropped:
+        row = []
+        for c in range(min_c, max_c):
+            ch = l[c] if c < len(l) else ' '
+            row.append(1 if ch.strip() else 0)
+        grid.append(row)
+    return grid, W, H, char
+
+print("Cargando frames...", end=' ', flush=True)
+FRAMES = [load_frame(fn, ch) for fn, ch in FRAME_FILES]
+print("OK")
+time.sleep(0.4)
+
+# ── Lógica de animación ───────────────────────────────────────────────────────
+#
+# Ciclo completo:
+#   1. Neutro (pausa aleatoria 3-7s)
+#   2. Brazo sube:  0 → 1 → 2 → 3  (mano abierta arriba)
+#   3. HOLD en frame 3:  permanece con la mano en alto (1.5-3.5s aleatorio)
+#      durante el hold hace pequeños "waves" (3↔2) para que no se vea estático
+#   4. Brazo baja:  3 → 2 → 4 → 0  (vuelta a neutral)
+#
+
+# Tiempos del movimiento del brazo (subida más lenta, bajada más rápida)
+T_SUBE = 0.20   # segundos por frame al subir
+T_BAJA = 0.14   # segundos por frame al bajar
+
+# Duración del hold con la mano en alto
+def hold_duration():
+    return random.uniform(1.5, 3.5)
+
+# Pausa en neutro entre saludos
+def wait_duration():
+    return random.triangular(3.0, 7.0, 4.5)
+
+# ── Escalado ──────────────────────────────────────────────────────────────────
+def render_frame(idx, tw, th):
+    grid, W, H, char = FRAMES[idx]
+    if not grid or W == 0 or H == 0:
+        return [' ' * tw] * (th - 1)
+    max_cols, max_rows = tw, th - 1
+    new_cols = max_cols
+    new_rows = int(new_cols * H / W * 0.5)
+    if new_rows > max_rows:
+        new_rows = max_rows
+        new_cols = int(new_rows * W / H * 2.0)
+        if new_cols > max_cols:
+            new_cols = max_cols
+            new_rows = int(new_cols * H / W * 0.5)
+    new_cols = max(1, min(new_cols, tw))
+    new_rows = max(1, min(new_rows, max_rows))
+    pad_l = (tw - new_cols) // 2
+    pad_t = (max_rows - new_rows) // 2
+    blank = ' ' * tw
+    out = [blank] * pad_t
+    for row in range(new_rows):
+        sr = min(int(row * H / new_rows), H - 1)
+        buf = [' '] * tw
+        for col in range(new_cols):
+            sc = min(int(col * W / new_cols), W - 1)
+            hits = sum(
+                grid[min(sr + dr, H - 1)][min(sc + dc, W - 1)]
+                for dr in range(2) for dc in range(2)
+            )
+            buf[pad_l + col] = char if hits >= 2 else ' '
+        out.append(''.join(buf))
+    while len(out) < max_rows:
+        out.append(blank)
+    return out
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+_render_cache = {}
+_cached_size  = (0, 0)
+
+def get_rendered(idx):
+    global _render_cache, _cached_size
+    tw, th = shutil.get_terminal_size(fallback=(120, 40))
+    if (tw, th) != _cached_size:
+        _render_cache = {}
+        _cached_size  = (tw, th)
+    if idx not in _render_cache:
+        _render_cache[idx] = render_frame(idx, tw, th)
+    return _render_cache[idx], tw, th
+
+# ── Windows API ───────────────────────────────────────────────────────────────
+class _COORD(ctypes.Structure):
+    _fields_ = [('X', ctypes.c_short), ('Y', ctypes.c_short)]
+
+class _CURSOR_INFO(ctypes.Structure):
+    _fields_ = [('dwSize', ctypes.c_int), ('bVisible', ctypes.c_int)]
+
+def _handle():
+    return ctypes.windll.kernel32.GetStdHandle(-11)
+
+def hide_cursor():
+    if os.name == 'nt':
+        ctypes.windll.kernel32.SetConsoleCursorInfo(_handle(), ctypes.byref(_CURSOR_INFO(1, 0)))
+    else:
+        sys.stdout.write('\033[?25l'); sys.stdout.flush()
+
+def show_cursor():
+    if os.name == 'nt':
+        ctypes.windll.kernel32.SetConsoleCursorInfo(_handle(), ctypes.byref(_CURSOR_INFO(100, 1)))
+    else:
+        sys.stdout.write('\033[?25h'); sys.stdout.flush()
+
+def goto(x, y):
+    if os.name == 'nt':
+        ctypes.windll.kernel32.SetConsoleCursorPosition(_handle(), _COORD(x, y))
+    else:
+        sys.stdout.write(f'\033[{y+1};{x+1}H'); sys.stdout.flush()
+
+def enable_ansi():
+    if os.name == 'nt':
+        ctypes.windll.kernel32.SetConsoleMode(_handle(), 0x0001 | 0x0004)
+
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def draw_frame(lines, tw):
+    goto(0, 0)
+    sys.stdout.write('\r\n'.join(line[:tw] for line in lines))
+    sys.stdout.flush()
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def show(idx, delay):
+    """Muestra un frame y espera delay segundos. Detecta resize."""
+    global _cached_size
+    tw, th = shutil.get_terminal_size(fallback=(120, 40))
+    if (tw, th) != _cached_size:
+        clear_screen()
+    lines, tw, th = get_rendered(idx)
+    draw_frame(lines, tw)
+    time.sleep(delay)
+
+def idle_wait(seconds):
+    """Permanece en frame 0 durante 'seconds' s, revisando resize cada 50ms."""
+    global _cached_size
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        tw, th = shutil.get_terminal_size(fallback=(120, 40))
+        if (tw, th) != _cached_size:
+            clear_screen()
+            lines, tw, th = get_rendered(0)
+            draw_frame(lines, tw)
+        time.sleep(0.05)
+
+def hold_waving(seconds):
+    """
+    Mantiene el brazo en alto haciendo waves suaves (3↔2↔3)
+    durante 'seconds' segundos. No se ve estático.
+    """
+    global _cached_size
+    # cadencia del wave mientras está en hold: cada ~0.35s cambia de pose
+    wave_cycle = [
+        (3, 0.35),   # mano abierta
+        (2, 0.28),   # brazo quieto un instante
+        (3, 0.35),   # mano abierta otra vez
+        (2, 0.25),
+    ]
+    deadline = time.monotonic() + seconds
+    idx_cycle = 0
+    while time.monotonic() < deadline:
+        frame_idx, delay = wave_cycle[idx_cycle % len(wave_cycle)]
+        remaining = deadline - time.monotonic()
+        actual_delay = min(delay, remaining)
+        if actual_delay <= 0:
+            break
+        tw, th = shutil.get_terminal_size(fallback=(120, 40))
+        if (tw, th) != _cached_size:
+            clear_screen()
+        lines, tw, th = get_rendered(frame_idx)
+        draw_frame(lines, tw)
+        time.sleep(actual_delay)
+        idx_cycle += 1
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+def on_exit(sig, frame):
+    show_cursor()
+    clear_screen()
+    print('Animacion terminada.')
+    sys.exit(0)
+
+def main():
+    signal.signal(signal.SIGINT,  on_exit)
+    signal.signal(signal.SIGTERM, on_exit)
+    enable_ansi()
+    clear_screen()
+    hide_cursor()
+
+    try:
+        # Arranque: mostrar neutro
+        lines, tw, th = get_rendered(0)
+        draw_frame(lines, tw)
+
+        while True:
+            # 1. NEUTRO — esperar parado
+            idle_wait(wait_duration())
+
+            # 2. SUBIDA — brazo sube paso a paso
+            show(1, T_SUBE)   # 45°
+            show(2, T_SUBE)   # 90°
+            show(3, T_SUBE)   # mano abierta
+
+            # 3. HOLD — se queda saludando con la mano en alto
+            hold_waving(hold_duration())
+
+            # 4. BAJADA — brazo baja paso a paso
+            show(2, T_BAJA)   # 90° (usando frame alto)
+            show(4, T_BAJA)   # 45° bajando
+            show(0, T_BAJA)   # neutro
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        show_cursor()
+        clear_screen()
+        print('Animacion terminada.')
+
+if __name__ == '__main__':
+    main()
