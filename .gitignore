@@ -1,0 +1,14 @@
+# Ignore massive model weights
+*.gguf
+
+# Ignore heavy pre-installed workspace files (>50MB) to prevent Git push limits/timeouts
+*ORBvoc.txt
+*shape_predictor_68_face_landmarks.dat
+*frozen_inference_graph.pb
+
+# Ignore temporary build files
+build/
+devel/
+__pycache__/
+*.pyc
+.DS_Store

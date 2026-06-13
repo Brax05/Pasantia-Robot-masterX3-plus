@@ -1,0 +1,4 @@
+<launch>
+    <include file="$(find orbbec_camera)/launch/astraproplus.launch"/>
+    <node name="astra_image_flip_py" pkg="yahboomcar_visual" type="astra_image_flip.py" output="screen"/>
+</launch>

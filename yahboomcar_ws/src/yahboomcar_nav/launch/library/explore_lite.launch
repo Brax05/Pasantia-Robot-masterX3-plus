@@ -1,0 +1,14 @@
+<launch>
+    <arg name="use_rviz" default="true"/>
+    <arg name="lidar_type" value="$(env RPLIDAR_TYPE)" doc="lidar_type type [a1,a2,a3,s1,s2]"/>
+    
+    <include file="$(find yahboomcar_nav)/launch/library/gmapping.launch" />
+    
+    <include file="$(find yahboomcar_nav)/launch/library/move_base.launch" />
+    
+    <!--include file="$(find yahboomcar_nav)/launch/yahboomcar_map.launch" if="$(arg use_rviz)"/-->
+    <include file="$(find yahboomcar_nav)/launch/library/explore_lite/explore_costmap.launch" />
+    
+    <!-- RVIZ -->
+    <include file="$(find yahboomcar_nav)/launch/view/view_navigate.launch" if="$(arg use_rviz)"/>
+</launch>

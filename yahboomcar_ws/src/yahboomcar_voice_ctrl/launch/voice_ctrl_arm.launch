@@ -1,0 +1,6 @@
+<launch>
+    
+    <node pkg="yahboomcar_voice_ctrl" type="voice_ctrl_arm.py" name="voice_ctrl_arm_node" required="true" output="screen"/>
+    <include file="$(find yahboomcar_ctrl)/launch/yahboom_joy.launch"/>
+
+</launch>

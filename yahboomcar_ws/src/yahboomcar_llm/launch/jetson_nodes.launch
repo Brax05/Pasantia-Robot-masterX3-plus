@@ -1,0 +1,26 @@
+<launch>
+    <arg name="camera_topic" default="/camera/rgb/image_raw"/>
+    <arg name="yolo_model_path" default="yolo11n.pt"/>
+    <arg name="ollama_url" default="http://localhost:11434/api/chat"/>
+    <arg name="ollama_model" default="llama3.2-instruct"/>
+    <arg name="interval" default="2.0"/>
+    <arg name="confidence" default="0.45"/>
+    <arg name="max_linear_speed" default="0.45"/>
+    <arg name="max_angular_speed" default="1.2"/>
+
+    <!-- Vision Pipeline Node -->
+    <node name="vision_pipeline" pkg="yahboomcar_llm" type="vision_pipeline.py" output="screen">
+        <param name="camera_topic" value="$(arg camera_topic)"/>
+        <param name="yolo_model_path" value="$(arg yolo_model_path)"/>
+        <param name="ollama_url" value="$(arg ollama_url)"/>
+        <param name="ollama_model" value="$(arg ollama_model)"/>
+        <param name="interval" value="$(arg interval)"/>
+        <param name="confidence" value="$(arg confidence)"/>
+    </node>
+
+    <!-- Action Parser Node -->
+    <node name="action_parser" pkg="yahboomcar_llm" type="action_parser.py" output="screen">
+        <param name="max_linear_speed" value="$(arg max_linear_speed)"/>
+        <param name="max_angular_speed" value="$(arg max_angular_speed)"/>
+    </node>
+</launch>

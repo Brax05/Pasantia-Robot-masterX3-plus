@@ -1,0 +1,12 @@
+<launch>
+    <!-- Rosbridge WebSocket Server -->
+    <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch">
+        <arg name="port" value="9090"/>
+    </include>
+
+    <!-- Web Video Server to stream camera image topics over HTTP -->
+    <node name="web_video_server" pkg="web_video_server" type="web_video_server" output="screen">
+        <param name="port" value="8080"/>
+        <param name="address" value="0.0.0.0"/>
+    </node>
+</launch>

@@ -1,0 +1,32 @@
+<launch>
+    <!-- Configurable Arguments for Inferencia & Visión -->
+    <arg name="camera_topic" default="/camera/rgb/image_raw"/>
+    <arg name="yolo_model_path" default="yolo11n.pt"/>
+    <arg name="ollama_url" default="http://localhost:11434/api/chat"/>
+    <arg name="ollama_model" default="llama3.2-instruct"/>
+    <arg name="interval" default="2.0"/>
+    <arg name="confidence" default="0.45"/>
+    <arg name="max_linear_speed" default="0.45"/>
+    <arg name="max_angular_speed" default="1.2"/>
+
+    <!-- 1. Launch Orbbec Astra Pro Plus camera driver -->
+    <include file="$(find orbbec_camera)/launch/astraproplus.launch"/>
+
+    <!-- 2. Launch Rosbridge WebSocket & Web Video Server -->
+    <include file="$(find yahboomcar_llm)/launch/rosbridge.launch"/>
+
+    <!-- 3. Launch LLM Bridge Node (Selector & Safety Watchdog) -->
+    <node name="llm_bridge_node" pkg="yahboomcar_llm" type="llm_bridge_node.py" output="screen"/>
+
+    <!-- 4. Launch Jetson Vision Pipeline and Action Parser Nodes -->
+    <include file="$(find yahboomcar_llm)/launch/jetson_nodes.launch">
+        <arg name="camera_topic" value="$(arg camera_topic)"/>
+        <arg name="yolo_model_path" value="$(arg yolo_model_path)"/>
+        <arg name="ollama_url" value="$(arg ollama_url)"/>
+        <arg name="ollama_model" value="$(arg ollama_model)"/>
+        <arg name="interval" value="$(arg interval)"/>
+        <arg name="confidence" value="$(arg confidence)"/>
+        <arg name="max_linear_speed" value="$(arg max_linear_speed)"/>
+        <arg name="max_angular_speed" value="$(arg max_angular_speed)"/>
+    </include>
+</launch>

@@ -1,0 +1,5 @@
+<launch>
+    <!-- 启动激光雷达节点-->
+    <!-- Activate the lidar node -->
+    <include file="$(find ydlidar_ros_driver)/launch/TG.launch"/>
+</launch>

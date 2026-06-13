@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROSMASTER-X3Plus - Control Panel</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="glass-bg"></div>
+    
+    <header>
+        <div class="logo">
+            <i class="fa-solid fa-robot pulse"></i>
+            <h1>ROSMASTER<span>X3Plus</span></h1>
+        </div>
+        <div class="status-panel">
+            <div id="ws-indicator" class="indicator disconnected">
+                <span class="dot"></span>
+                <span id="ws-status-text">Desconectado</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <!-- Cara Mochi OLED (Ocupa todo el fondo) -->
+        <div class="card face-card">
+            <div class="face-container" id="face-container">
+                <!-- Status Badge flotante en la esquina superior derecha -->
+                <div class="face-status-overlay">
+                    <span class="face-label">Mochi Face (Expresiones)</span>
+                    <span id="face-mode-badge" class="badge-sleeping">Sleeping</span>
+                </div>
+
+                <div class="mochi-wrapper">
+                    <canvas id="mochi-canvas" width="200" height="120"></canvas>
+                    <img id="mochi-gif" src="/static/images/RIVE_big_smile_animation_4x.gif" alt="Mochi Big Smile" style="display: none; height: 100%; object-fit: contain; image-rendering: pixelated; margin: 0 auto;">
+                </div>
+                
+                <!-- Subtítulo de Respuesta del LLM (Minimalista) -->
+                <div id="llm-subtitle" class="subtitle-overlay"></div>
+            </div>
+            
+            <!-- Controles flotantes en la parte inferior de la cara -->
+            <div class="floating-controls">
+                <button id="btn-greet" class="btn-command-action">
+                    <i class="fa-solid fa-hand-wave"></i> Saludar con el Brazo
+                </button>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Escribe un mensaje o comando (ej: 'avanza un poco')...">
+                    <button id="btn-send" class="btn-send"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cámara Flotante (Esquina Superior Izquierda) -->
+        <div class="card camera-card floating-camera">
+            <div class="card-header">
+                <h2><i class="fa-solid fa-video"></i> Video en Tiempo Real</h2>
+                <span class="badge-camera-status" id="camera-topic-badge">Cámara Habilitada</span>
+            </div>
+            <div class="video-container">
+                <img id="camera-stream" src="" alt="Cargando transmisión..." class="video-stream">
+                <div id="camera-placeholder" class="camera-placeholder">
+                    <i class="fa-solid fa-video-slash" style="color: #ff073a; margin-bottom: 8px;"></i>
+                    <p style="color: #a5f3fc; font-size: 0.85rem; font-family: monospace;">Cámara no disponible / Error de conexión</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal para configurar IPs -->
+    <div id="config-modal" class="modal">
+        <div class="modal-content">
+            <h3>Configuración de Conexión</h3>
+            <div class="input-group">
+                <label for="ip-rpi">Dirección IP de la RPi:</label>
+                <input type="text" id="ip-rpi" placeholder="Ej: 192.168.1.100">
+            </div>
+            <button id="btn-save-config" class="btn-save">Conectar y Guardar</button>
+        </div>
+    </div>
+
+    <!-- Roslibjs CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <!-- Custom Application Script -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

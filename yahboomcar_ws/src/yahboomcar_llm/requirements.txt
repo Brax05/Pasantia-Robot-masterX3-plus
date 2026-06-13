@@ -1,0 +1,13 @@
+# Dependencias principales para ROSMASTER-X3Plus LLM & Vision Pipeline
+
+# Servidor Backend de la Interfaz Web (GUI)
+flask>=2.0.0
+
+# Cliente HTTP para conectar con la API local de Ollama (Llama 3.2)
+requests>=2.25.0
+
+# Procesamiento de imágenes y visualización de cámara local
+opencv-python>=4.5.0
+
+# Detección de objetos en tiempo real (YOLO)
+ultralytics>=8.0.0
