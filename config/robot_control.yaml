@@ -34,26 +34,60 @@ imu_filtered_topic: /imu/imu_data
 
 # Limites conservadores de movimiento para Semana 1.
 default_mode: idle
-max_linear_x: 0.18
+
+# Velocidad maxima de avance/retroceso. Si pides mas, el controller recorta aqui.
+max_linear_x: 0.22
+
+# Movimiento lateral desactivado para esta base.
 max_linear_y: 0.0
+
+# Velocidad maxima de giro. Si el robot gira muy brusco, bajar este valor.
 max_angular_z: 0.70
+
+# Velocidad minima util: un avance menor que esto sube a este valor.
 min_effective_linear_x: 0.16
+
+# Minimo de giro util. En 0.0 no fuerza giros pequenos.
 min_effective_angular_z: 0.0
-default_linear_speed: 0.16
-default_turn_speed: 0.45
+
+# Velocidad usada si el comando no trae speed.
+default_linear_speed: 0.18
+
+# Giro usado si el comando no trae angular/turn_speed.
+default_turn_speed: 0.55
 
 # Tiempos de seguridad.
+
+# Frecuencia con que el controller publica /cmd_vel mientras controla.
 controller_publish_rate: 10.0
+
+# Frecuencia con que se publica /robot/status.
 status_publish_rate: 2.0
+
+# Duracion usada si el comando no trae duration.
 default_command_duration: 0.6
-max_command_duration: 3.0
-watchdog_timeout: 1.5
+
+# Duracion maxima aceptada aunque el comando pida mas.
+max_command_duration: 5.0
+
+# Corte de seguridad si un comando activo dura demasiado sin refrescarse.
+watchdog_timeout: 5.5
+
+# Tiempo extra publicando velocidad cero despues de detener.
 stop_publish_duration: 0.6
+
+# Tiempo para considerar vivo un topic en /robot/status.
 topic_fresh_timeout: 2.0
 
 # Compuertas de seguridad.
+
+# Angulo frontal que se revisa para obstaculos con LiDAR.
 front_angle_deg: 25.0
+
+# Si es true, un obstaculo frontal bloquea avanzar.
 front_obstacle_blocks_forward: true
+
+# Si es true, joystick/manual bloquea comandos del backend.
 manual_blocks_commands: true
 
 # Chequeos TF mostrados en /robot/status.

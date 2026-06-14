@@ -1,73 +1,70 @@
-# README - yahboomcar_pet_behavior
+# yahboomcar_pet_behavior
 
-## Encabezado Del Archivo
-
-Este archivo resume el estado actual de la Semana 1 del paquete
-`yahboomcar_pet_behavior`. Las pruebas paso a paso estan separadas en
-[`README_PRUEBAS.md`](README_PRUEBAS.md).
-
-Informacion util: el "main" recomendado de la capa mascota es
-`launch/pet_robot.launch`. El nodo `autopilot_monitor.py` solo observa el
-contexto; el nodo `robot_controller.py` es la unica pieza de esta capa que debe
-publicar comandos seguros hacia `/cmd_vel`.
-
-## Objetivo Del Paquete
-
-Este paquete crea una capa de comportamiento tipo mascota sobre el
+Paquete ROS1 para agregar una capa de control tipo mascota sobre el
 ROSMASTER/Yahboom X3 Plus.
 
-La arquitectura actual separa tres responsabilidades:
+Este paquete no reemplaza el driver base del robot. Su funcion es actuar como
+una capa intermedia segura entre backend, UI o LLM y los topics reales del
+robot.
 
-- observacion pasiva del entorno y navegacion;
-- control seguro de movimiento para comandos de alto nivel;
-- telemetria central para backend, UI y pruebas.
+## Objetivo
 
-## Estado Semana 1
+El paquete separa tres responsabilidades:
 
-Codigo listo:
+- observar contexto del robot, como LiDAR, joystick y navegacion;
+- recibir comandos de alto nivel y convertirlos en movimiento seguro;
+- publicar telemetria central para backend, UI y pruebas.
 
-- `pet_robot.launch`: launch principal de la capa mascota.
-- `autopilot_monitor.py`: observa LiDAR, joystick, goals y estado de `move_base`.
-- `robot_controller.py`: recibe comandos seguros y publica `/cmd_vel`.
-- `robot_status.py`: publica telemetria central en `/robot/status`.
-- `autopilot_base.yaml`: parametros del monitor pasivo.
-- `robot_control.yaml`: limites, watchdog, topics y seguridad.
+El flujo recomendado es:
 
-Seguridad implementada:
+```text
+backend/UI/LLM
+  -> /robot/command
+  -> robot_controller.py
+  -> /cmd_vel
+  -> base fisica del robot
+```
 
-- parada de emergencia por `/robot/emergency_stop`;
-- watchdog por perdida de comandos;
-- limites de velocidad;
-- duracion maxima de comandos;
-- bloqueo de avance si `front_blocked=true`;
-- modo manual bloquea comandos del backend;
-- publicacion de velocidad cero al detenerse o cerrar el nodo.
+El backend no debe publicar directo en `/cmd_vel`, porque saltaria watchdog,
+limites de velocidad, emergency stop, bloqueo por obstaculo y modo manual.
 
-Pendiente de validar con robot fisico:
+## Estado Actual
 
-- avance real;
-- retroceso real;
-- giro real izquierda/derecha;
-- parada real despues de movimiento;
-- cambio real en `/vel_raw`;
-- cambio real en `/odom_raw`;
-- voltaje real en `/voltage`;
-- TF `odom -> base_footprint`;
-- TF base/LiDAR;
-- IMU real;
-- calibracion de velocidades.
+Semana 1:
 
-## Archivos Principales
+- control fisico seguro por `/robot/command`;
+- limites de velocidad y duracion de comandos;
+- watchdog;
+- parada explicita;
+- emergency stop;
+- telemetria base por `/robot/status`.
 
-- [`README_PRUEBAS.md`](README_PRUEBAS.md): guia operativa de arranque,
-  pruebas y diagnostico.
-- `launch/pet_robot.launch`: main ROS de la capa mascota.
-- `launch/autopilot_base.launch`: launch solo para observacion/autopiloto.
-- `scripts/autopilot_monitor.py`: monitor pasivo, no mueve motores.
-- `scripts/robot_controller.py`: compuerta segura de movimiento.
-- `scripts/robot_status.py`: telemetria central.
-- `config/autopilot_base.yaml`: configuracion del monitor.
-- `config/robot_control.yaml`: configuracion de control, seguridad y status.
+Semana 2:
+
+- estabilidad del movimiento fisico;
+- LiDAR integrado dentro del flujo normal;
+- eventos para backend por `/robot/events`;
+- callbacks ROS preparados para recibir comandos, estado y sensores;
+- contrato basico para que backend lea estado y reaccione a eventos.
+
+## Nodos Principales
+
+- `scripts/autopilot_monitor.py`: observa contexto del robot. Lee LiDAR,
+  joystick, goals y estado de navegacion. No mueve motores.
+- `scripts/robot_controller.py`: recibe comandos seguros, valida condiciones y
+  publica velocidad final hacia `/cmd_vel`.
+- `scripts/robot_status.py`: junta estado del controlador, sensores y robot en
+  un solo JSON publicado en `/robot/status`.
+
+## Launch Principal
+
+El main recomendado es:
+
+```bash
+roslaunch yahboomcar_pet_behavior pet_robot.launch
+```
+
+Ese launch levanta la capa completa: monitor, controlador seguro y telemetria.
 
 ## Topics Importantes
 
@@ -77,75 +74,30 @@ Pendiente de validar con robot fisico:
 /robot/emergency_stop          parada de emergencia
 /robot/controller_state        estado interno del controlador
 /robot/events                  eventos, rechazos y paradas
-/robot/status                  telemetria central
+/robot/status                  telemetria central para backend/UI
 /pet_behavior/autopilot_state  estado observado por el monitor
 /pet_behavior/autopilot_event  eventos del monitor
-/cmd_vel                       orden final hacia el driver/motores
+/cmd_vel                       salida final hacia driver/motores
 /scan                          datos del LiDAR
 /vel_raw                       velocidad real reportada por la base
 /odom_raw                      odometria cruda
 /voltage                       bateria
 ```
 
-Importante: backend, LLM o UI deben mandar comandos a `/robot/command`, no
-directo a `/cmd_vel`. Publicar directo en `/cmd_vel` salta watchdog, limites,
-emergency stop y bloqueo por obstaculo.
+## Comandos Soportados
 
-## Pruebas Y Validacion
+Los comandos entran como JSON por `/robot/command`.
 
-Las instrucciones operativas de arranque, pruebas sin robot, pruebas fisicas,
-aislamiento de LiDAR y diagnostico de hardware estan en:
-
-- [`README_PRUEBAS.md`](README_PRUEBAS.md)
-
-## Comandos Soportados Por /robot/command
-
-Avanzar:
-
-```json
-{"command":"move_forward","speed":0.10,"duration":0.5,"source":"backend"}
-```
-
-Retroceder:
-
-```json
-{"command":"move_backward","speed":0.10,"duration":0.5,"source":"backend"}
-```
-
-Girar izquierda:
-
-```json
-{"command":"turn_left","angular":0.45,"duration":0.5,"source":"backend"}
-```
-
-Girar derecha:
-
-```json
-{"command":"turn_right","angular":0.45,"duration":0.5,"source":"backend"}
-```
-
-Movimiento generico:
-
-```json
-{"command":"move","linear":{"x":0.10},"angular":{"z":0.0},"duration_ms":500,"source":"backend"}
-```
-
-Detener:
-
-```json
-{"command":"stop","source":"backend"}
-```
-
-Emergency stop:
-
-```json
-{"command":"emergency_stop","active":true,"source":"backend"}
-```
-
-Cambiar modo:
-
-```json
-{"command":"set_mode","mode":"backend_controlled","source":"backend"}
+```text
+move_forward
+move_backward
+turn_left
+turn_right
+move
+stop
+emergency_stop
+clear_emergency_stop
+set_mode
 ```
 
 Modos soportados:
@@ -157,32 +109,18 @@ autonomous
 backend_controlled
 ```
 
-## Checklist De Cierre Semana 1
+## Archivos De Configuracion
 
-Codigo:
+- `config/robot_control.yaml`: topics, limites de movimiento, watchdog,
+  tiempos de comando, emergency stop y telemetria.
+- `config/autopilot_base.yaml`: parametros del monitor pasivo y LiDAR.
 
--  launch principal de la capa mascota;
--  monitor pasivo;
--  controlador seguro;
--  telemetria central;
--  emergency stop;
--  watchdog;
--  limites de velocidad;
--  bloqueo por obstaculo frontal;
--  contrato para backend;
--  documentacion base.
+## Pruebas
 
-Robot fisico:
+La guia operativa esta separada en:
 
-- avanzar;
-- retroceder;
-- girar izquierda;
-- girar derecha;
-- detenerse despues de movimiento real;
-- validar `/vel_raw`;
-- validar `/odom_raw`;
-- validar `/voltage`;
-- validar IMU(Sensor de movimineto/orientacion);
-- validar TF(Mapa de coordenadas entre partes del robot);
-- validar emergency stop fisico;
-- validar watchdog fisico.
+- [`README_PRUEBAS.md`](README_PRUEBAS.md)
+
+Ese archivo contiene los pasos para levantar ROS, probar movimiento fisico,
+verificar `/robot/status`, revisar `/robot/events` y confirmar el contrato para
+backend.

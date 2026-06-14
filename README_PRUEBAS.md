@@ -1,16 +1,27 @@
-# README_PRUEBAS - Prueba Fisica Con LiDAR
+# README_PRUEBAS - Semana 1 y Semana 2
 
-Objetivo de manana: comprobar si el robot avanza usando `/robot/command` y,
-si no avanza, aislar si el bloqueo viene de la compuerta frontal del LiDAR.
+Objetivo: validar en una prueba normal lo construido en Semana 1 y Semana 2.
+
+Esta prueba cubre:
+
+- control fisico seguro por `/robot/command`;
+- telemetria aislada por `/robot/status`;
+- eventos para backend por `/robot/events`;
+- LiDAR activo dentro de la seguridad normal;
+- watchdog, duracion de comandos y parada;
+- emergency stop;
+- contrato basico que consumiran backend, UI o LLM.
 
 Orden recomendado:
 
 ```text
 1. Preparar terminales ROS.
-2. Probar movimiento normal con seguridad completa.
-3. Si no avanza, revisar /robot/status y /robot/events.
-4. Si sospechas LiDAR, hacer la prueba A/B.
-5. Usar /cmd_vel directo solo al final para confirmar hardware/driver.
+2. Levantar la capa completa del robot.
+3. Mirar /robot/status y /robot/events.
+4. Poner modo backend_controlled.
+5. Probar avance, retroceso, giros y parada.
+6. Probar emergency stop.
+7. Confirmar campos minimos para backend.
 ```
 
 ## Preparar Terminales
@@ -25,22 +36,7 @@ cd ~/yahboomcar_ws
 source devel/setup.bash
 ```
 
-Si esas lineas ya estan en `~/.bashrc` y `rostopic list` funciona, no hace
-falta repetirlas manualmente.
-
-No necesitas ejecutar `roscore` aparte si usas `roslaunch`; `roslaunch` lo
-arranca automaticamente si no hay master ROS activo.
-
-Antes de mover:
-
-- bateria cargada;
-- espacio libre al frente del robot;
-- mano lista para levantar el robot o cortar movimiento;
-- no usar `/cmd_vel` directo salvo en el diagnostico final.
-
-## Prueba 1 - Movimiento Seguro Normal
-
-Esta es la primera prueba. Usa la seguridad completa, incluyendo LiDAR.
+## Prueba Normal
 
 Terminal A, levantar la capa completa:
 
@@ -50,14 +46,6 @@ export ROS_IP=127.0.0.1
 cd ~/yahboomcar_ws
 source devel/setup.bash
 roslaunch yahboomcar_pet_behavior pet_robot.launch
-```
-
-Si la base no reporta bateria real en `/voltage` o `/vel_raw` queda siempre en
-cero, primero cerrar launches duplicados y relanzar limpio. Como diagnostico
-de motores se puede probar sin LiDAR:
-
-```bash
-roslaunch yahboomcar_pet_behavior pet_robot.launch start_lidar:=false
 ```
 
 En esta Yahboom X3 Plus la Rosmaster responde por una ruta serial estable de
@@ -97,20 +85,6 @@ rostopic pub -1 /robot/command std_msgs/String \
 "data: '{\"command\":\"set_mode\",\"mode\":\"backend_controlled\",\"source\":\"physical_test\"}'"
 ```
 
-Antes de mover, confirmar en `/robot/status`:
-
-```text
-emergency_stop: false
-joy_active: false
-mode: "backend_controlled"
-```
-
-Idealmente tambien:
-
-```text
-front_blocked: false
-```
-
 Enviar avance:
 
 ```bash
@@ -118,12 +92,33 @@ rostopic pub -1 /robot/command std_msgs/String \
 "data: '{\"command\":\"move_forward\",\"speed\":0.10,\"duration\":1.0,\"source\":\"physical_test\"}'"
 ```
 
+Enviar retroceso:
+
+```bash
+rostopic pub -1 /robot/command std_msgs/String \
+"data: '{\"command\":\"move_backward\",\"speed\":0.10,\"duration\":1.0,\"source\":\"physical_test\"}'"
+```
+
+Girar izquierda:
+
+```bash
+rostopic pub -1 /robot/command std_msgs/String \
+"data: '{\"command\":\"turn_left\",\"angular\":0.45,\"duration\":1.0,\"source\":\"physical_test\"}'"
+```
+
+Girar derecha:
+
+```bash
+rostopic pub -1 /robot/command std_msgs/String \
+"data: '{\"command\":\"turn_right\",\"angular\":0.45,\"duration\":1.0,\"source\":\"physical_test\"}'"
+```
+
 Resultado esperado:
 
 ```text
 /robot/events muestra command_accepted
-commanded_velocity.linear_x sube cerca de 0.16
-raw_velocity.linear_x cambia si la base reporta movimiento
+commanded_velocity.linear_x sube cerca de 0.16 al avanzar
+raw_velocity cambia si la base reporta movimiento real
 last_stop_reason termina como command_duration_elapsed
 ```
 
@@ -138,96 +133,79 @@ rostopic pub -1 /robot/command std_msgs/String \
 "data: '{\"command\":\"stop\",\"source\":\"physical_test\"}'"
 ```
 
-## Si No Avanza
+## Prueba De Emergency Stop
 
-Revisar en `/robot/status` y `/robot/events`:
+Activar parada de emergencia:
+
+```bash
+rostopic pub -1 /robot/command std_msgs/String \
+"data: '{\"command\":\"emergency_stop\",\"active\":true,\"source\":\"physical_test\"}'"
+```
+
+Intentar avanzar mientras esta activa:
+
+```bash
+rostopic pub -1 /robot/command std_msgs/String \
+"data: '{\"command\":\"move_forward\",\"speed\":0.10,\"duration\":1.0,\"source\":\"physical_test\"}'"
+```
+
+Resultado esperado:
 
 ```text
+/robot/events muestra command_rejected
+last_error: "emergency_stop_active"
+emergency_stop: true
+state: "emergency"
+```
+
+Limpiar emergency stop:
+
+```bash
+rostopic pub -1 /robot/command std_msgs/String \
+"data: '{\"command\":\"clear_emergency_stop\",\"source\":\"physical_test\"}'"
+rostopic pub -1 /robot/command std_msgs/String \
+"data: '{\"command\":\"set_mode\",\"mode\":\"backend_controlled\",\"source\":\"physical_test\"}'"
+```
+
+## Campos Minimos Para Backend
+
+Mientras Terminal B muestra `/robot/status`, confirmar que existan estos campos:
+
+```text
+state
+mode
 emergency_stop
 joy_active
-mode
 front_blocked
 front_range
-front_obstacle_range
-front_blocked_points
-front_blocked_angle_deg
-front_valid_points
+last_command
+last_source
 last_error
 last_stop_reason
+topics
 commanded_velocity
 raw_velocity
+battery_voltage
+tf
 ```
 
-Interpretacion rapida:
+Mientras Terminal C muestra `/robot/events`, confirmar estos eventos durante la
+prueba:
 
 ```text
-last_error: "emergency_stop_active"
-  limpiar /robot/emergency_stop.
-
-last_error: "manual_control_active"
-mode: "manual"
-joy_active: true
-  volver a backend_controlled y revisar joystick.
-
-last_stop_reason: "front_obstacle_blocked"
-front_blocked: true
-  sospecha de LiDAR/compuerta frontal.
-
-commanded_velocity cambia pero raw_velocity no
-  el controlador publico, pero la base no reporto movimiento real.
+controller_ready
+mode_changed
+command_accepted
+robot_stop
+command_rejected
 ```
 
-Si `front_blocked` aparece `true`, o si el robot no avanza y quieres separar
-LiDAR de otros bloqueos, hacer la Prueba 2.
-
-## Prueba 2 - A/B Para Aislar LiDAR
-
-Esta prueba compara el mismo comando con una sola diferencia:
+Con esto queda probado que el backend puede:
 
 ```text
-A: Prueba 1, seguridad normal, LiDAR bloquea avance si detecta obstaculo.
-B: repetir el mismo comando, pero con front_obstacle_blocks_forward:=false.
+enviar comandos por /robot/command
+leer estado actual desde /robot/status
+reaccionar a aceptados, rechazos y paradas desde /robot/events
 ```
 
-La Prueba 1 ya es la Prueba A. Antes de cambiar nada, anotar:
-
-```text
-Avanzo fisicamente?
-front_blocked
-last_stop_reason
-commanded_velocity
-raw_velocity
-```
-
-Despues de anotar eso, detener el launch normal en Terminal A con `Ctrl+C`.
-
-### Prueba B - Bloqueo Frontal Apagado Temporalmente
-
-Levantar el mismo launch, pero apagando solo la compuerta frontal:
-
-```bash
-export ROS_MASTER_URI=http://127.0.0.1:11311
-export ROS_IP=127.0.0.1
-cd ~/yahboomcar_ws
-source devel/setup.bash
-roslaunch yahboomcar_pet_behavior pet_robot.launch front_obstacle_blocks_forward:=false
-```
-
-En Terminal D, repetir el mismo comando:
-
-Detener:
-
-```bash
-rostopic pub -1 /robot/command std_msgs/String \
-"data: '{\"command\":\"stop\",\"source\":\"lidar_ab_test\"}'"
-```
-
-```bash
-rostopic pub -1 /robot/emergency_stop std_msgs/Bool "data: false"
-rostopic pub -1 /robot/command std_msgs/String \
-"data: '{\"command\":\"set_mode\",\"mode\":\"backend_controlled\",\"source\":\"lidar_ab_test\"}'"
-rostopic pub -1 /robot/command std_msgs/String \
-"data: '{\"command\":\"move_forward\",\"speed\":0.10,\"duration\":1.0,\"source\":\"lidar_ab_test\"}'"
-```
-
-En caso de no tener resultados con ambas pruebas revisar mode, joy_active,emergency_stop, commanded_velocity y raw_velocity.
+Al terminar, cerrar el launch de Terminal A con `Ctrl+C`.
