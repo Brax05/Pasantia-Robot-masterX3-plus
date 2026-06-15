@@ -17,13 +17,22 @@
 
 import os, sys, time, shutil, signal, ctypes, random, threading
 
+# Dependencias para la detección de personas con YOLO.
+# Instalar con:  pip install ultralytics
+try:
+    import cv2
+    from ultralytics import YOLO
+    YOLO_DISPONIBLE = True
+except ImportError:
+    YOLO_DISPONIBLE = False
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SECCIÓN 1 — RUTAS DE CARPETAS
 # Cada grupo de animaciones vive en su propia subcarpeta.
 # Para añadir una animación nueva crea su carpeta aquí y referénciala abajo.
 # ══════════════════════════════════════════════════════════════════════════════
 
-ROOT       = r'C:\Users\bprado\Documents\Universidad\Robot-Fablab'
+ROOT       = os.path.dirname(os.path.abspath(__file__))
 
 # Carpetas existentes (ya tienes los .txt)
 DIR_PESTANAR = os.path.join(ROOT, 'Pestañar')   # Animation_1.txt … Animation4.txt
@@ -68,6 +77,14 @@ SALUDO_MAX = 40.0
 # Tiempos del brazo del saludo (tomados de Saludo_animacion tal cual)
 T_SUBE = 0.20
 T_BAJA = 0.14
+
+
+# ── Detección de personas con YOLO ──────────────────────────────────────────
+CAMARA_ID        = 0           # índice de la cámara (0 = cámara por defecto)
+YOLO_MODELO      = 'yolo11n.pt'  # modelo nano: rápido, ideal para tiempo real
+YOLO_CONFIANZA   = 0.5         # confianza mínima para considerar "persona detectada"
+YOLO_INTERVALO   = 0.5         # segundos entre cada inferencia (no hace falta cada frame)
+CLASE_PERSONA    = 0           # clase 0 = "person" en el dataset COCO
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -419,6 +436,86 @@ class Necesidades:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SECCIÓN 8B — DETECTOR DE PERSONAS (YOLO + cámara)
+# Corre en un hilo aparte: toma una foto cada YOLO_INTERVALO segundos,
+# le pasa el modelo YOLO y guarda si hay (al menos) una persona visible.
+# El loop principal solo lee detector.persona_presente().
+# ══════════════════════════════════════════════════════════════════════════════
+
+class DetectorPersonas:
+    def __init__(self, camara_id=CAMARA_ID, modelo=YOLO_MODELO,
+                 confianza=YOLO_CONFIANZA, intervalo=YOLO_INTERVALO):
+        self.camara_id = camara_id
+        self.modelo_nombre = modelo
+        self.confianza = confianza
+        self.intervalo = intervalo
+
+        self._presente = False
+        self._lock     = threading.Lock()
+        self._running  = False
+        self._listo    = False   # True cuando ya hizo al menos una detección
+        self._error    = None
+
+        self.model = None
+        self.cap   = None
+
+    def persona_presente(self):
+        with self._lock:
+            return self._presente
+
+    def listo(self):
+        with self._lock:
+            return self._listo
+
+    def error(self):
+        with self._lock:
+            return self._error
+
+    def _loop(self):
+        try:
+            self.model = YOLO(self.modelo_nombre)
+            self.cap   = cv2.VideoCapture(self.camara_id)
+
+            if not self.cap.isOpened():
+                with self._lock:
+                    self._error = f"No se pudo abrir la cámara {self.camara_id}"
+                return
+
+            while self._running:
+                ok, frame = self.cap.read()
+                if not ok:
+                    time.sleep(self.intervalo)
+                    continue
+
+                resultados = self.model(
+                    frame,
+                    verbose=False,
+                    classes=[CLASE_PERSONA],
+                    conf=self.confianza,
+                )
+                hay_persona = len(resultados[0].boxes) > 0
+
+                with self._lock:
+                    self._presente = hay_persona
+                    self._listo    = True
+
+                time.sleep(self.intervalo)
+        except Exception as e:
+            with self._lock:
+                self._error = str(e)
+        finally:
+            if self.cap is not None:
+                self.cap.release()
+
+    def start(self):
+        self._running = True
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def stop(self):
+        self._running = False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SECCIÓN 9 — SELECTOR DE ESTADO
 # Devuelve el id de la animación a reproducir según las necesidades.
 # Si la animación aún no está cargada, cae al ojo (fallback automático).
@@ -580,6 +677,19 @@ def main():
     nec = Necesidades()
     nec.start()
 
+    # ── Detector de personas (YOLO) ─────────────────────────────────────────
+    detector = None
+    if YOLO_DISPONIBLE:
+        detector = DetectorPersonas()
+        detector.start()
+        print("Cargando modelo YOLO y abriendo cámara... (puede tardar unos segundos)")
+        time.sleep(0.5)
+    else:
+        print("AVISO: no se encontró 'ultralytics'/'opencv'.")
+        print("       El personaje se mostrará siempre (sin detección de personas).")
+        print("       Instala con:  pip install ultralytics")
+        time.sleep(1.5)
+
     global _cached_size
 
     proximo_saludo = time.monotonic() + random.uniform(SALUDO_MIN, SALUDO_MAX)
@@ -588,6 +698,7 @@ def main():
     estado_actual  = 'ojo'
     anim_step      = 0
     ultimo_frame_t = time.monotonic()
+    persona_anterior = True   # asumimos presente al inicio
 
     try:
         while True:
@@ -612,6 +723,32 @@ def main():
             elif key == 'j':
                 nec.jugar();  hint = '¡Yuhu! (+felicidad)'; hint_expiry = now + 2.0
                 # TODO: ejecutar_animacion('feliz') cuando tengas los .txt
+
+            # ── ¿Hay una persona frente a la cámara? ────────────────────────
+            if detector is None:
+                presente = True
+            elif detector.error() or not detector.listo():
+                # Sin detector funcionando (cámara no disponible o aún
+                # cargando el modelo) -> se muestra el personaje normal.
+                presente = True
+            else:
+                presente = detector.persona_presente()
+
+            if not presente:
+                # Nadie frente a la cámara -> no mostrar nada en pantalla.
+                if persona_anterior:
+                    clear_screen()
+                persona_anterior = False
+                time.sleep(0.05)
+                continue
+
+            if not persona_anterior:
+                # Volvió a aparecer alguien -> redibujar desde cero.
+                clear_screen()
+                _render_cache.clear()
+                anim_step      = 0
+                ultimo_frame_t = now
+            persona_anterior = True
 
             # ── Selector de estado ────────────────────────────────────────
             nuevo_estado = seleccionar_estado(nec_snap)
@@ -657,6 +794,8 @@ def main():
         pass
     finally:
         nec.stop()
+        if detector is not None:
+            detector.stop()
         show_cursor()
         clear_screen()
         print('¡Hasta luego!')
